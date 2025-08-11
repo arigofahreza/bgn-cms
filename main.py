@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import users, locations
+from routers import users, locations, report_user
 from models import locations as md_loc, users as md_us
 import database
 
@@ -20,4 +20,9 @@ app.add_middleware(
 
 # Routers
 app.include_router(users.router)
+app.include_router(report_user.router)
 app.include_router(locations.router)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

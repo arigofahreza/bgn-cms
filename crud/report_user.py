@@ -1,3 +1,4 @@
+
 from sqlalchemy.orm import Session
 from models.report_user import ReportUser
 from datetime import datetime
@@ -79,3 +80,77 @@ def get_total_by_date_last_14_days(db: Session, category: str = None):
     for d, total in results:
         result_dict[d] = total
     return [{"date": d.isoformat(), "total": result_dict[d]} for d in days]
+
+def get_heatmap(db: Session, category: str = None):
+    from collections import defaultdict
+    from datetime import datetime, timedelta
+    from models.report_user import ReportUser
+    today = datetime.today()
+    start_month = today.replace(day=1)
+    six_months_ago = (start_month - timedelta(days=1)).replace(day=1) - timedelta(days=30*5)
+    query = db.query(ReportUser.created_at)
+    if category:
+        query = query.filter(ReportUser.category == category)
+    query = query.filter(ReportUser.created_at >= six_months_ago)
+    data = query.all()
+
+    heatmap = defaultdict(int)
+    for row in data:
+        date_str = row.created_at.strftime("%Y-%m-%d")
+        heatmap[date_str] += 1
+
+    result = []
+    current = six_months_ago
+    while current <= today:
+        date_str = current.strftime("%Y-%m-%d")
+        result.append({
+            "date": date_str,
+            "total": heatmap.get(date_str, 0)
+        })
+        current += timedelta(days=1)
+
+    return result
+
+def get_wordcloud(db: Session, category: str = None):
+    from collections import Counter
+    from models.report_user import ReportUser
+    query = db.query(ReportUser.summary)
+    if category:
+        query = query.filter(ReportUser.category == category)
+    data = query.all()
+    words = []
+    for (summary,) in data:
+        if summary:
+            words.extend(summary.lower().split())
+    counter = Counter(words)
+    # Return as list of dicts: [{"word": w, "count": c}, ...]
+    return [{"word": w, "count": c} for w, c in counter.most_common()]
+
+def get_total_by_sentiment(db: Session, category: str = None):
+    from sqlalchemy import func
+    query = db.query(ReportUser.sentiment, func.count(ReportUser.id))
+    if category:
+        query = query.filter(ReportUser.category == category)
+    results = query.group_by(ReportUser.sentiment).all()
+    return [{"sentiment": s, "total": total} for s, total in results]
+
+def get_desc_data(db: Session, category: str = None):
+    query = db.query(
+        ReportUser.what,
+        ReportUser.who,
+        ReportUser.where,
+        ReportUser.created_at
+    )
+    if category:
+        query = query.filter(ReportUser.category == category)
+    query = query.order_by(ReportUser.created_at.desc()).limit(15)
+    results = query.all()
+    return [
+        {
+            "what": r[0],
+            "who": r[1],
+            "where": r[2],
+            "created_at": r[3].isoformat() if r[3] else None
+        }
+        for r in results
+    ]

@@ -10,7 +10,7 @@ router = APIRouter(prefix="/users", tags=["Users"])
 def list_users(page: int = 1, limit: int = 100, db: Session = Depends(database.get_db)):
     return crud.get_users(db, page, limit)
 
-@router.get("/select/", response_model=users.UserOut)
+@router.get("/select/")
 def read_user(db: Session = Depends(database.get_db), user_id: int = Query()):
     user = crud.get_user(db, user_id)
     if not user:

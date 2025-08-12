@@ -542,3 +542,12 @@ def get_all_document(db: Session, page: int = 1, limit: int = 10):
         "total_page": (total + limit - 1) // limit,  # pembulatan ke atas
         "data": [row.__dict__ for row in results]
     }
+
+def get_report_statistics(db: Session):
+    total = db.query(ReportMetadata).count()
+    now = datetime.now()
+    month_total = db.query(ReportMetadata).filter(
+        ReportMetadata.generated_at >= datetime(now.year, now.month, 1),
+        ReportMetadata.generated_at < datetime(now.year, now.month + 1 if now.month < 12 else 1, 1) if now.month < 12 else datetime(now.year + 1, 1, 1)
+    ).count()
+    return {"total": total, "month_total": month_total}

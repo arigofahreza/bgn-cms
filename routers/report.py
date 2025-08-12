@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Query, Depends
 from sqlalchemy.orm import Session
 
-from crud.report import get_report_data, get_download_report, get_all_document
+from crud.report import get_report_data, get_download_report, get_all_document, get_report_statistics
 from database import get_db, get_llm
 
 router = APIRouter(prefix="/report", tags=['report'])
@@ -26,3 +26,7 @@ def download_report(db: Session = Depends(get_db), id: int = Query(), url: str =
 def get_all_report(db: Session = Depends(get_db), page: int = Query(), limit: int = Query()):
     results = get_all_document(db, page, limit)
     return results
+
+@router.get("/statistics")
+def get_all_report_statistics(db: Session = Depends(get_db)):
+    return get_report_statistics(db)

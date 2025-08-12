@@ -158,3 +158,11 @@ def get_desc_data(db: Session, category: str = None):
         }
         for r in results
     ]
+
+def get_sentiment_category(db: Session, category: str = None):
+    from sqlalchemy import func
+    query = db.query(ReportUser.category, ReportUser.sentiment, func.count(ReportUser.id))
+    if category:
+        query = query.filter(ReportUser.category == category)
+    results = query.group_by(ReportUser.sentiment, ReportUser.category).all()
+    return [{"category": category, "sentiment": s, "total": total} for category, s, total in results]

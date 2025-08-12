@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from database import get_db
 
-from crud.report_user import get_report_user_statistics, get_total_by_category, get_total_by_date_last_14_days, get_total_by_created_by, get_trend_contributor, get_heatmap, get_wordcloud, get_total_by_sentiment, get_desc_data
-
+from crud.report_user import get_report_user_statistics, get_total_by_category, get_total_by_date_last_14_days, \
+    get_total_by_created_by, get_trend_contributor, get_heatmap, get_wordcloud, get_total_by_sentiment, get_desc_data, \
+    get_sentiment_category
 
 router = APIRouter(
     tags=["Dashboard"],
@@ -68,3 +69,11 @@ def report_user_desc_data(
     category: str = Query(None, description="Optional category filter")
 ):
     return get_desc_data(db, category)
+
+
+@router.get("/report_user/sentiment_category")
+def report_user_total_by_sentiment(
+    db: Session = Depends(get_db),
+    category: str = Query(None, description="Optional category filter")
+):
+    return get_sentiment_category(db, category)

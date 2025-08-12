@@ -1,6 +1,7 @@
-
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from models.report_user import ReportUser
+from models.users import User
 from datetime import datetime
 
 def get_report_user_statistics(db: Session):
@@ -19,16 +20,19 @@ def get_total_by_category(db: Session):
 
 def get_total_by_created_by(db: Session, category: str = None):
     from sqlalchemy import func, desc
-    query = db.query(ReportUser.when.label('cb'), func.count(ReportUser.id).label("total"))
+    query = db.query(User.name, ReportUser.created_by_phone.label('cb'), func.count(ReportUser.id).label("total"))
     if category:
         query = query.filter(ReportUser.category == category)
     results = (
-        query.group_by(ReportUser.when)
+        query.join(
+            User,
+            (User.phone == ReportUser.created_by_phone)
+        ).group_by(User.name, ReportUser.created_by_phone)
         .order_by(desc("total"))
         .limit(5)
         .all()
     )
-    return [{"created_by": cb, "total": total} for cb, total in results]
+    return [{"name": name, "created_by": cb, "total": total} for name, cb, total in results]
 
 def get_trend_contributor(db: Session, category: str = None):
     from sqlalchemy import func, cast, Date, desc

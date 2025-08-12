@@ -7,8 +7,8 @@ def get_report_user_statistics(db: Session):
     total = db.query(ReportUser).count()
     now = datetime.now()
     month_total = db.query(ReportUser).filter(
-        ReportUser.created_at >= datetime(now.year, now.month, 1),
-        ReportUser.created_at < datetime(now.year, now.month + 1 if now.month < 12 else 1, 1) if now.month < 12 else datetime(now.year + 1, 1, 1)
+        ReportUser.when >= datetime(now.year, now.month, 1),
+        ReportUser.when < datetime(now.year, now.month + 1 if now.month < 12 else 1, 1) if now.month < 12 else datetime(now.year + 1, 1, 1)
     ).count()
     return {"total": total, "month_total": month_total}
 

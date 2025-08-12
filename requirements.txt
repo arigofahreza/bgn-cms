@@ -6,3 +6,5 @@ pydantic
 python-dotenv
 geoalchemy2
 shapely
+openai
+docxtpl

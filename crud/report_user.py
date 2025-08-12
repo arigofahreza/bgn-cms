@@ -17,13 +17,13 @@ def get_total_by_category(db: Session):
     results = db.query(ReportUser.category, func.count(ReportUser.id)).group_by(ReportUser.category).all()
     return [{"category": cat, "total": total} for cat, total in results]
 
-def get_total_by_created_by(db: Session, category: str = None):
+def get_total_by_when(db: Session, category: str = None):
     from sqlalchemy import func, desc
-    query = db.query(ReportUser.created_by, func.count(ReportUser.id).label("total"))
+    query = db.query(ReportUser.when.label('cb'), func.count(ReportUser.id).label("total"))
     if category:
         query = query.filter(ReportUser.category == category)
     results = (
-        query.group_by(ReportUser.created_by)
+        query.group_by(ReportUser.when)
         .order_by(desc("total"))
         .limit(5)
         .all()

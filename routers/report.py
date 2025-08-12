@@ -1,25 +1,28 @@
 from typing import Optional
 
-from fastapi import APIRouter, Query
-from app.crud.report import get_report_data, get_download_report, get_all_document
+from fastapi import APIRouter, Query, Depends
+from sqlalchemy.orm import Session
+
+from crud.report import get_report_data, get_download_report, get_all_document
+from database import get_db, get_llm
 
 router = APIRouter(prefix="/report", tags=['report'])
 
 
 @router.get("/generate")
-async def generate_report(category: str = Query(), start_date: str = Query(), end_date: str = Query(),
+def generate_report(db: Session = Depends(get_db), client = Depends(get_llm), location_id: str = Query(), start_date: str = Query(), end_date: str = Query(),
                           title: str = Query(default=None)):
-    results = await get_report_data(category, start_date, end_date, title)
+    results = get_report_data(db, client, location_id, start_date, end_date, title)
     return results
 
 
 @router.get('/download')
-async def download_report(id: int = Query(), url: str = Query()):
-    results = await get_download_report(id, url)
+def download_report(db: Session = Depends(get_db), id: int = Query(), url: str = Query()):
+    results = get_download_report(db, id, url)
     return results
 
 
 @router.get('/get-all')
-async def get_all_report(page: int = Query(), limit: int = Query()):
-    results = await get_all_document(page, limit)
+def get_all_report(db: Session = Depends(get_db), page: int = Query(), limit: int = Query()):
+    results = get_all_document(db, page, limit)
     return results

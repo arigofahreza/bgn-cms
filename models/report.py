@@ -6,6 +6,6 @@ class ReportMetadata(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     title = Column(Text, nullable=False)
-    category = Column(String(100))
+    location_id = Column(String(100))
     url = Column(Text)
     generated_at = Column(DateTime, default=func.now())

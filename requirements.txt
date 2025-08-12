@@ -10,3 +10,4 @@ openai
 docxtpl
 pandas
 matplotlib
+tabulate

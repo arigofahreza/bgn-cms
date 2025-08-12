@@ -68,14 +68,14 @@ def get_total_by_date_last_14_days(db: Session, category: str = None):
     from datetime import date, timedelta
     today = date.today()
     days = [(today - timedelta(days=i)) for i in range(14, -1, -1)]
-    query = db.query(cast(ReportUser.created_at, Date), func.count(ReportUser.id))
+    query = db.query(cast(ReportUser.when, Date), func.count(ReportUser.id))
     query = query.filter(
-        cast(ReportUser.created_at, Date) >= today - timedelta(days=14),
-        cast(ReportUser.created_at, Date) <= today
+        cast(ReportUser.when, Date) >= today - timedelta(days=14),
+        cast(ReportUser.when, Date) <= today
     )
     if category:
         query = query.filter(ReportUser.category == category)
-    results = query.group_by(cast(ReportUser.created_at, Date)).all()
+    results = query.group_by(cast(ReportUser.when, Date)).all()
     result_dict = {d: 0 for d in days}
     for d, total in results:
         result_dict[d] = total
@@ -88,15 +88,15 @@ def get_heatmap(db: Session, category: str = None):
     today = datetime.today()
     start_month = today.replace(day=1)
     six_months_ago = (start_month - timedelta(days=1)).replace(day=1) - timedelta(days=30*5)
-    query = db.query(ReportUser.created_at)
+    query = db.query(ReportUser.when)
     if category:
         query = query.filter(ReportUser.category == category)
-    query = query.filter(ReportUser.created_at >= six_months_ago)
+    query = query.filter(ReportUser.when >= six_months_ago)
     data = query.all()
 
     heatmap = defaultdict(int)
     for row in data:
-        date_str = row.created_at.strftime("%Y-%m-%d")
+        date_str = row.when.strftime("%Y-%m-%d")
         heatmap[date_str] += 1
 
     result = []

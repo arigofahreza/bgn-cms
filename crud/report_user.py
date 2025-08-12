@@ -43,17 +43,17 @@ def get_trend_contributor(db: Session, category: str = None):
     # Get daily totals for each contributor
     trend_data = {d: {cb: 0 for cb in top_contributors} for d in days}
     query = db.query(
-        cast(ReportUser.created_at, Date).label("date"),
+        cast(ReportUser.when, Date).label("date"),
         ReportUser.created_by,
         func.count(ReportUser.id).label("total")
     ).filter(
-        cast(ReportUser.created_at, Date) >= today - timedelta(days=7),
-        cast(ReportUser.created_at, Date) <= today
+        cast(ReportUser.when, Date) >= today - timedelta(days=7),
+        cast(ReportUser.when, Date) <= today
     )
     if category:
         query = query.filter(ReportUser.category == category)
     query = query.filter(ReportUser.created_by.in_(top_contributors))
-    results = query.group_by(cast(ReportUser.created_at, Date), ReportUser.created_by).all()
+    results = query.group_by(cast(ReportUser.when, Date), ReportUser.created_by).all()
     for d, cb, total in results:
         if cb in top_contributors and d in trend_data:
             trend_data[d][cb] = total

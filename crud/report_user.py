@@ -24,10 +24,12 @@ def get_total_by_created_by(db: Session, category: str = None):
     if category:
         query = query.filter(ReportUser.category == category)
     results = (
-        query.join(
+        query
+        .join(
             User,
             (User.phone == ReportUser.created_by_phone)
-        ).group_by(User.name, ReportUser.created_by_phone)
+        )
+        .group_by(User.name, ReportUser.created_by_phone)
         .order_by(desc("total"))
         .limit(5)
         .all()
@@ -40,24 +42,31 @@ def get_trend_contributor(db: Session, category: str = None):
     today = date.today()
     days = [(today - timedelta(days=i)) for i in range(7, -1, -1)]
     # Get top 5 contributors
-    top_query = db.query(ReportUser.created_by, func.count(ReportUser.id).label("total"))
+    top_query = db.query(User.name, func.count(ReportUser.id).label("total"))
     if category:
         top_query = top_query.filter(ReportUser.category == category)
-    top_contributors = [cb for cb, _ in top_query.group_by(ReportUser.created_by).order_by(desc("total")).limit(5).all()]
+    top_contributors = [cb for cb, _ in top_query.join(
+            User,
+            (User.phone == ReportUser.created_by_phone)
+        ).group_by(User.name).order_by(desc("total")).limit(5).all()]
     # Get daily totals for each contributor
     trend_data = {d: {cb: 0 for cb in top_contributors} for d in days}
-    query = db.query(
+    query = (db.query(
         cast(ReportUser.when, Date).label("date"),
-        ReportUser.created_by,
+        User.name,
         func.count(ReportUser.id).label("total")
-    ).filter(
+    ).join(
+            User,
+            (User.phone == ReportUser.created_by_phone)
+        )
+    .filter(
         cast(ReportUser.when, Date) >= today - timedelta(days=7),
         cast(ReportUser.when, Date) <= today
-    )
+    ))
     if category:
         query = query.filter(ReportUser.category == category)
-    query = query.filter(ReportUser.created_by.in_(top_contributors))
-    results = query.group_by(cast(ReportUser.when, Date), ReportUser.created_by).all()
+    query = query.filter(User.name.in_(top_contributors))
+    results = query.group_by(cast(ReportUser.when, Date), User.name).all()
     for d, cb, total in results:
         if cb in top_contributors and d in trend_data:
             trend_data[d][cb] = total

@@ -8,3 +8,5 @@ geoalchemy2
 shapely
 openai
 docxtpl
+pandas
+matplotlib

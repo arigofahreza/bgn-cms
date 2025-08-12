@@ -1,12 +1,11 @@
-from sqlalchemy import Table, Column, Integer, String, Text, DateTime, MetaData, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, func
+from database import Base
 
-metadata = MetaData()
+class ReportMetadata(Base):
+    __tablename__ = "report_metadata"
 
-report_metadata = Table(
-    'report_metadata', metadata,
-    Column('id', Integer, primary_key=True, autoincrement=True),
-    Column('title', Text, nullable=False),
-    Column('category', String(100)),
-    Column('url', Text),
-    Column('generated_at', DateTime, default=func.now())
-)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    title = Column(Text, nullable=False)
+    category = Column(String(100))
+    url = Column(Text)
+    generated_at = Column(DateTime, default=func.now())

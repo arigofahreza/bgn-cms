@@ -506,18 +506,19 @@ def get_download_report(db: Session, id: int, url: str):
     if not result:
         return {}
 
-    json_result = result.__dict__
+    json_result = {c.name: getattr(result, c.name) for c in result.__table__.columns}
     url_data = json_result.get('url')
 
     if url_data != url:
         return {}
 
     filename = json_result.get('title')
-    return FileResponse(
-        path=f'./report/{filename}',
-        filename=filename,
-        media_type='application/octet-stream'
-    )
+    return filename
+    # return FileResponse(
+    #     path=f'./report/{filename}',
+    #     filename=filename,
+    #     media_type='application/octet-stream'
+    # )
 
 
 def get_all_document(db: Session, page: int = 1, limit: int = 10):

@@ -513,12 +513,11 @@ def get_download_report(db: Session, id: int, url: str):
         return {}
 
     filename = json_result.get('title')
-    return filename
-    # return FileResponse(
-    #     path=f'./report/{filename}',
-    #     filename=filename,
-    #     media_type='application/octet-stream'
-    # )
+    return FileResponse(
+        path=f'./report/{filename}',
+        filename=filename,
+        media_type='application/octet-stream'
+    )
 
 
 def get_all_document(db: Session, page: int = 1, limit: int = 10):

@@ -2,7 +2,7 @@ from shapely.geometry.geo import shape
 from sqlalchemy import and_, literal, func
 from sqlalchemy.orm import Session
 
-from helpers import create_propinsi, get_zoom_and_centroid, create_kabupaten, create_kecamatan, create_kelurahan
+from utils.helpers import create_propinsi, get_zoom_and_centroid, create_kabupaten, create_kecamatan, create_kelurahan
 from models import locations as models
 import database
 from schemas import locations as schemas

@@ -506,7 +506,7 @@ def get_download_report(db: Session, id: int, url: str):
     if not result:
         return {}
 
-    json_result = result.__dict__
+    json_result = {c.name: getattr(result, c.name) for c in result.__table__.columns}
     url_data = json_result.get('url')
 
     if url_data != url:

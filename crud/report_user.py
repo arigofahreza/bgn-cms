@@ -175,8 +175,19 @@ def get_trend_contributor(db: Session,
                           kd_kelurahan: str | None = None):
     from sqlalchemy import func, cast, Date, desc
     from datetime import date, timedelta
+
     today = date.today()
     days = [(today - timedelta(days=i)) for i in range(7, -1, -1)]
+    filter_location = ''
+    if kd_propinsi and not kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        filter_location = f'{kd_propinsi}'
+    elif kd_propinsi and kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        filter_location = f'{kd_propinsi}.{kd_kabupaten}'
+
+    if end_date and start_date:
+        today = datetime.strptime(end_date, '%Y-%m-%d')
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        days = [(start + timedelta(days=i)) for i in range((today - start).days + 1)]
     # Get top 5 contributors
     top_query = db.query(User.name, func.count(ReportUser.id).label("total"))
     if category:
@@ -184,7 +195,8 @@ def get_trend_contributor(db: Session,
     top_contributors = [cb for cb, _ in top_query.join(
         User,
         (User.phone == ReportUser.created_by_phone)
-    ).group_by(User.name).order_by(desc("total")).limit(5).all()]
+    ).filter()
+    .group_by(User.name).order_by(desc("total")).limit(5).all()]
     # Get daily totals for each contributor
     trend_data = {d: {cb: 0 for cb in top_contributors} for d in days}
     query = (db.query(
@@ -196,8 +208,8 @@ def get_trend_contributor(db: Session,
         (User.phone == ReportUser.created_by_phone)
     )
     .filter(
-        cast(ReportUser.when, Date) >= today - timedelta(days=7),
-        cast(ReportUser.when, Date) <= today
+        cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
+        cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d')
     ))
     if category:
         query = query.filter(ReportUser.category == category)

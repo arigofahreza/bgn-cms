@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from crud.report import get_report_data, get_download_report, get_all_document, get_report_statistics
 from database import get_db, get_llm
 
-router = APIRouter(prefix="/report", tags=['report'])
+router = APIRouter(prefix="/report", tags=['Report'])
 
 
 @router.get("/generate")

@@ -308,7 +308,7 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
     )
 
     ## ============= Trend Kontributor ====================
-    top_query = db.query(User.name, func.count(ReportUser.id).label("total"))
+    top_query = db.query(User.name, func.count(ReportUser.id).label("total")).filter(User.location_id.like(f'{location_id}%'))
     top_contributors = [cb for cb, _ in top_query.join(
         User,
         (User.phone == ReportUser.created_by_phone)
@@ -332,6 +332,7 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
         {"date": date_val.strftime("%Y-%m-%d"), "name": name, "total": total}
         for date_val, name, total in trend_contributor_results
     ]
+    print(json_trend_contributor)
     df_trend_contributor = pd.DataFrame(json_trend_contributor, columns=['date', 'name', 'total'])
     md_trend_contributor_data = df_trend_contributor.to_markdown(index=False)
 

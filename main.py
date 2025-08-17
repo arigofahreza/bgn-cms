@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import users, locations, report_user, report, maps
+from routers import users, locations, report_user, report, maps, user_dashboard
 from models import locations as md_loc, users as md_us
 import database
 
@@ -24,3 +24,4 @@ app.include_router(report_user.router)
 app.include_router(locations.router)
 app.include_router(report.router)
 app.include_router(maps.router)
+app.include_router(user_dashboard.router)

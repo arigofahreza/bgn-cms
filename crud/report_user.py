@@ -1,4 +1,4 @@
-from sqlalchemy import and_, cast, Date, literal_column
+from sqlalchemy import and_, cast, Date, literal_column, text
 from sqlalchemy.orm import Session
 
 from utils.generator import filter_query_location
@@ -551,7 +551,8 @@ def get_sentiment_category(db: Session, category: str = None,
         query = (query.filter(kd_propinsi_col == kd_propinsi,
                               kd_kabupaten_col == kd_kabupaten,
                               kd_kecamatan_col == kd_kecamatan)
-                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, ReportUser.sentiment, ReportUser.category))
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, ReportUser.sentiment,
+                           ReportUser.category))
     elif kd_propinsi and kd_kabupaten and kd_kecamatan and kd_kelurahan:
         kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
         kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
@@ -561,8 +562,198 @@ def get_sentiment_category(db: Session, category: str = None,
                               kd_kabupaten_col == kd_kabupaten,
                               kd_kecamatan_col == kd_kecamatan,
                               kd_kelurahan_col == kd_kelurahan)
-                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, kd_kelurahan_col, ReportUser.sentiment, ReportUser.category))
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, kd_kelurahan_col, ReportUser.sentiment,
+                           ReportUser.category))
     else:
         query = query.group_by(ReportUser.sentiment, ReportUser.category)
     results = query.all()
     return [{"category": category, "sentiment": s, "total": total} for category, s, total in results]
+
+
+def get_total_per_location(db: Session,
+                           kd_propinsi: str | None = None,
+                           kd_kabupaten: str | None = None,
+                           kd_kecamatan: str | None = None,
+                           kd_kelurahan: str | None = None
+                           ):
+    if not kd_propinsi and not kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        sql = text("""
+            WITH location AS (
+                SELECT kd_propinsi, nm_propinsi, centroid 
+                FROM propinsi
+            ), data AS (
+                SELECT COUNT(ru.id) AS count, u.location_id 
+                FROM report_user ru
+                INNER JOIN users u 
+                    ON u.phone = ru.created_by_phone
+                GROUP BY u.location_id
+            ), split_location AS (
+                SELECT 
+                    count, 
+                    (string_to_array(location_id, '.'))[1] AS kd_propinsi
+                FROM data
+            ), calculate AS (
+                SELECT 
+                    SUM(count) AS total, 
+                    kd_propinsi 
+                FROM split_location
+                GROUP BY kd_propinsi
+            )
+            SELECT 
+                c.*, 
+                l.nm_propinsi,
+                l.centroid 
+            FROM calculate c 
+            INNER JOIN location l 
+                ON c.kd_propinsi = l.kd_propinsi;
+            """)
+        rows = db.execute(sql).fetchall()
+        features = []
+        for total, kd_propinsi, nm_propinsi, centroid_hex in rows:
+            feature = {
+                'total': total,
+                "name": nm_propinsi,
+                "category": 'propinsi'
+            }
+            features.append(feature)
+        return features
+    elif kd_propinsi and not kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        sql = text(f'''
+            with location as (
+            select kd_propinsi, kd_kabupaten, nm_kabupaten, centroid from kabupaten where kd_propinsi = '{kd_propinsi}'
+            ), data as (
+            select count(ru.id), u.location_id from report_user ru
+            inner join users u on u.phone = ru.created_by_phone
+            group by u.location_id
+            ), split_location as (
+            select count, (string_to_array(location_id, '.'))[1] AS kd_propinsi,
+                (string_to_array(location_id, '.'))[2] AS kd_kabupaten
+            from data
+            ), calculate as (
+            select sum(count) as total, kd_propinsi, kd_kabupaten 
+            from split_location
+            where kd_propinsi = '{kd_propinsi}'
+            group by kd_propinsi, kd_kabupaten
+            ) select c.*, l.nm_kabupaten, l.centroid from calculate c 
+            inner join location l 
+            on c.kd_propinsi = l.kd_propinsi 
+            and c.kd_kabupaten = l.kd_kabupaten 
+        ''')
+        rows = db.execute(sql).fetchall()
+        features = []
+        for total, kd_propinsi, kd_kabupaten, nm_kabupaten, centroid_hex in rows:
+            feature = {
+                'total': total,
+                "name": nm_kabupaten,
+                "category": 'kabupaten'
+            }
+            features.append(feature)
+        return features
+    elif kd_propinsi and kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        sql = text(f'''
+            with location as (
+            select kd_propinsi, kd_kabupaten, kd_kecamatan, nm_kecamatan, centroid from kecamatan where kd_propinsi = '{kd_propinsi}' and kd_kabupaten = '{kd_kabupaten}'
+            ), data as (
+            select count(ru.id), u.location_id from report_user ru
+            inner join users u on u.phone = ru.created_by_phone
+            group by u.location_id
+            ), split_location as (
+            select count, (string_to_array(location_id, '.'))[1] AS kd_propinsi,
+                (string_to_array(location_id, '.'))[2] AS kd_kabupaten,
+                (string_to_array(location_id, '.'))[3] AS kd_kecamatan
+            from data
+            ), calculate as (
+            select sum(count) as total, kd_propinsi, kd_kabupaten, kd_kecamatan 
+            from split_location
+            where kd_propinsi = '{kd_propinsi}' and kd_kabupaten = '{kd_kabupaten}'
+            group by kd_propinsi, kd_kabupaten, kd_kecamatan
+            ) select c.*, l.nm_kecamatan, l.centroid from calculate c 
+            inner join location l 
+            on c.kd_propinsi = l.kd_propinsi 
+            and c.kd_kabupaten = l.kd_kabupaten 
+            and c.kd_kecamatan  = l.kd_kecamatan 
+                ''')
+        rows = db.execute(sql).fetchall()
+        features = []
+        for total, kd_propinsi, kd_kabupaten, kd_kecamatan, nm_kecamatan, centroid_hex in rows:
+            feature = {
+                'total': total,
+                "name": nm_kecamatan,
+                "category": 'kecamatan'
+            }
+            features.append(feature)
+        return features
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and not kd_kelurahan:
+        sql = text(f'''
+            with location as (
+        select kd_propinsi, kd_kabupaten, kd_kecamatan, kd_kelurahan, nm_kelurahan, centroid 
+        from kelurahan where kd_propinsi = '{kd_propinsi}' and kd_kabupaten = '{kd_kabupaten}' and kd_kecamatan = '{kd_kecamatan}'
+        ), data as (
+        select count(ru.id), u.location_id from report_user ru
+        inner join users u on u.phone = ru.created_by_phone
+        group by u.location_id
+        ), split_location as (
+        select count, (string_to_array(location_id, '.'))[1] AS kd_propinsi,
+            (string_to_array(location_id, '.'))[2] AS kd_kabupaten,
+            (string_to_array(location_id, '.'))[3] AS kd_kecamatan,
+            (string_to_array(location_id, '.'))[4] AS kd_kelurahan
+        from data
+        ), calculate as (
+        select sum(count) as total, kd_propinsi, kd_kabupaten, kd_kecamatan, kd_kelurahan 
+        from split_location
+        where kd_propinsi = '{kd_propinsi}' and kd_kabupaten = '{kd_kabupaten}' and kd_kecamatan = '{kd_kecamatan}'
+        group by kd_propinsi, kd_kabupaten, kd_kecamatan, kd_kelurahan
+        ) select c.*, l.nm_kelurahan, l.centroid from calculate c 
+        inner join location l 
+        on c.kd_propinsi = l.kd_propinsi 
+        and c.kd_kabupaten = l.kd_kabupaten 
+        and c.kd_kecamatan  = l.kd_kecamatan 
+        and c.kd_kelurahan = l.kd_kelurahan
+        ''')
+        rows = db.execute(sql).fetchall()
+        features = []
+        for total, kd_propinsi, kd_kabupaten, kd_kecamatan, kd_kelurahan, nm_kelurahan, centroid_hex in rows:
+            feature = {
+                'total': total,
+                "name": nm_kelurahan,
+                "category": 'keluraan'
+            }
+            features.append(feature)
+        return features
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and kd_kelurahan:
+        sql = text(f'''
+            with location as (
+        select kd_propinsi, kd_kabupaten, kd_kecamatan, kd_kelurahan, nm_kelurahan, centroid 
+        from kelurahan where kd_propinsi = '{kd_propinsi}' and kd_kabupaten = '{kd_kabupaten}' and kd_kecamatan = '{kd_kecamatan}' and kd_kelurahan = '{kd_kelurahan}'
+        ), data as (
+        select count(ru.id), u.location_id from report_user ru
+        inner join users u on u.phone = ru.created_by_phone
+        group by u.location_id
+        ), split_location as (
+        select count, (string_to_array(location_id, '.'))[1] AS kd_propinsi,
+            (string_to_array(location_id, '.'))[2] AS kd_kabupaten,
+            (string_to_array(location_id, '.'))[3] AS kd_kecamatan,
+            (string_to_array(location_id, '.'))[4] AS kd_kelurahan
+        from data
+        ), calculate as (
+        select sum(count) as total, kd_propinsi, kd_kabupaten, kd_kecamatan, kd_kelurahan 
+        from split_location
+        where kd_propinsi = '{kd_propinsi}' and kd_kabupaten = '{kd_kabupaten}' and kd_kecamatan = '{kd_kecamatan}' and kd_kelurahan = '{kd_kelurahan}'
+        group by kd_propinsi, kd_kabupaten, kd_kecamatan, kd_kelurahan
+        ) select c.*, l.nm_kelurahan, l.centroid from calculate c 
+        inner join location l 
+        on c.kd_propinsi = l.kd_propinsi 
+        and c.kd_kabupaten = l.kd_kabupaten 
+        and c.kd_kecamatan  = l.kd_kecamatan 
+        and c.kd_kelurahan = l.kd_kelurahan
+        ''')
+        rows = db.execute(sql).fetchall()
+        features = []
+        for total, kd_propinsi, kd_kabupaten, kd_kecamatan, kd_kelurahan, nm_kelurahan, centroid_hex in rows:
+            feature = {
+                'total': total,
+                "name": nm_kelurahan,
+                "category": 'kelurahan'
+            }
+            features.append(feature)
+        return features

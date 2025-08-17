@@ -4,7 +4,7 @@ from database import get_db
 
 from crud.report_user import get_report_user_statistics, get_total_by_category, get_total_by_date_last_14_days, \
     get_total_by_created_by, get_trend_contributor, get_heatmap, get_wordcloud, get_total_by_sentiment, get_desc_data, \
-    get_sentiment_category
+    get_sentiment_category, get_total_per_location
 
 router = APIRouter(
     tags=["Dashboard"],
@@ -21,6 +21,16 @@ def report_user_wordcloud(
         kd_kelurahan: str = Query(None, description="Optional kode kelurahan")
 ):
     return get_wordcloud(db, category, kd_propinsi, kd_kabupaten, kd_kecamatan, kd_kelurahan)
+
+@router.get("/report_user/total_per_location")
+def report_user_total_per_location(
+        db: Session = Depends(get_db),
+        kd_propinsi: str = Query(None, description="Optional kode propinsi"),
+        kd_kabupaten: str = Query(None, description="Optional kode kabupaten"),
+        kd_kecamatan: str = Query(None, description="Optional kode kecamatan"),
+        kd_kelurahan: str = Query(None, description="Optional kode kelurahan")
+):
+    return get_total_per_location(db, kd_propinsi, kd_kabupaten, kd_kecamatan, kd_kelurahan)
 
 
 @router.get("/report_user/heatmap")

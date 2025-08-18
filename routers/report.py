@@ -10,9 +10,15 @@ router = APIRouter(prefix="/report", tags=['Report'])
 
 
 @router.get("/generate")
-def generate_report(db: Session = Depends(get_db), client = Depends(get_llm), location_id: str = Query(), start_date: str = Query(), end_date: str = Query(),
-                          title: str = Query(default=None)):
-    results = get_report_data(db, client, location_id, start_date, end_date, title)
+def generate_report(db: Session = Depends(get_db), client=Depends(get_llm),
+                    start_date: str = Query(), end_date: str = Query(),
+                    title: str = Query(default=None),
+                    kd_propinsi: str = Query(None, description="Optional kode propinsi"),
+                    kd_kabupaten: str = Query(None, description="Optional kode kabupaten"),
+                    kd_kecamatan: str = Query(None, description="Optional kode kecamatan"),
+                    kd_kelurahan: str = Query(None, description="Optional kode kelurahan")
+                    ):
+    results = get_report_data(db, client, start_date, end_date, title, kd_propinsi, kd_kabupaten, kd_kecamatan, kd_kelurahan)
     return results
 
 
@@ -26,6 +32,7 @@ def download_report(db: Session = Depends(get_db), id: int = Query(), url: str =
 def get_all_report(db: Session = Depends(get_db), page: int = Query(), limit: int = Query()):
     results = get_all_document(db, page, limit)
     return results
+
 
 @router.get("/statistics")
 def get_all_report_statistics(db: Session = Depends(get_db)):

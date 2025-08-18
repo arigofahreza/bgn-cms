@@ -3,7 +3,7 @@ from io import BytesIO
 
 from docx.shared import Mm
 from docxtpl import DocxTemplate, InlineImage
-from sqlalchemy import select, desc, func, and_, insert
+from sqlalchemy import select, desc, func, and_, insert, literal_column
 from sqlalchemy.orm import Session
 from fastapi.responses import FileResponse
 from sqlalchemy import func, cast, Date
@@ -14,22 +14,28 @@ from models.report import ReportMetadata
 from models import locations as l_models, ReportUser, User
 
 
-def get_report_data(db: Session, client, location_id: str, start_date: str, end_date: str, title: str = None):
+def get_report_data(db: Session, client, start_date: str, end_date: str, title: str = None,
+                    kd_propinsi: str | None = None,
+                    kd_kabupaten: str | None = None,
+                    kd_kecamatan: str | None = None,
+                    kd_kelurahan: str | None = None
+                    ):
     location_name = []
-    split_location_id = location_id.split('.')
-    if len(split_location_id) == 1:
+    location_id = 'all'
+    if kd_propinsi and not kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
         location_result = (db.query(
             l_models.Propinsi.nm_propinsi,
         )
                            .filter(
             and_(
-                l_models.Propinsi.kd_propinsi == split_location_id[0]
+                l_models.Propinsi.kd_propinsi == kd_propinsi
             )
         )
                            .first())
         if location_result:
             location_name.append(location_result.nm_propinsi)
-    elif len(split_location_id) == 2:
+            location_id = kd_propinsi
+    elif kd_propinsi and kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
         location_result = (
             db.query(
                 l_models.Kabupaten.nm_kabupaten,
@@ -43,8 +49,8 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
             )
             .filter(
                 and_(
-                    l_models.Kabupaten.kd_kabupaten == split_location_id[1],
-                    l_models.Kabupaten.kd_propinsi == split_location_id[0]
+                    l_models.Kabupaten.kd_kabupaten == kd_kabupaten,
+                    l_models.Kabupaten.kd_propinsi == kd_propinsi
                 )
             )
             .first()
@@ -52,7 +58,8 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
         if location_result:
             location_name.append(location_result.nm_propinsi)
             location_name.append(location_result.nm_kabupaten)
-    elif len(split_location_id) == 3:
+            location_id = f'{kd_propinsi}.{kd_kabupaten}'
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and not kd_kelurahan:
         location_result = (
             db.query(
                 l_models.Kecamatan.nm_kecamatan,
@@ -74,9 +81,9 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
             )
             .filter(
                 and_(
-                    l_models.Kecamatan.kd_kecamatan == split_location_id[2],
-                    l_models.Kecamatan.kd_kabupaten == split_location_id[1],
-                    l_models.Kecamatan.kd_propinsi == split_location_id[0]
+                    l_models.Kecamatan.kd_kecamatan == kd_kecamatan,
+                    l_models.Kecamatan.kd_kabupaten == kd_kabupaten,
+                    l_models.Kecamatan.kd_propinsi == kd_propinsi
                 )
             )
             .first()
@@ -85,7 +92,8 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
             location_name.append(location_result.nm_propinsi)
             location_name.append(location_result.nm_kabupaten)
             location_name.append(location_result.nm_kecamatan)
-    elif len(split_location_id) == 4:
+            location_id = f'{kd_propinsi}.{kd_kabupaten}.{kd_kecamatan}'
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and kd_kelurahan:
         location_result = (
             db.query(
                 l_models.Kelurahan.nm_kelurahan,
@@ -116,10 +124,10 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
             )
             .filter(
                 and_(
-                    l_models.Kelurahan.kd_kelurahan == split_location_id[3],
-                    l_models.Kelurahan.kd_kecamatan == split_location_id[2],
-                    l_models.Kelurahan.kd_kabupaten == split_location_id[1],
-                    l_models.Kelurahan.kd_propinsi == split_location_id[0]
+                    l_models.Kelurahan.kd_kelurahan == kd_kelurahan,
+                    l_models.Kelurahan.kd_kecamatan == kd_kecamatan,
+                    l_models.Kelurahan.kd_kabupaten == kd_kabupaten,
+                    l_models.Kelurahan.kd_propinsi == kd_propinsi
                 )
             )
             .first()
@@ -129,22 +137,94 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
             location_name.append(location_result.nm_kabupaten)
             location_name.append(location_result.nm_kecamatan)
             location_name.append(location_result.nm_kabupaten)
-    location_name_str = ', '.join(location_name)
-
-    total = db.query(ReportUser).count()
-    total_report_with_period = db.query(ReportUser).filter(
+            location_id = f'{kd_propinsi}.{kd_kabupaten}.{kd_kecamatan}.{kd_kelurahan}'
+    if location_name:
+        location_name_str = ', '.join(location_name)
+    else:
+        location_name_str = 'Indonesia'
+    query_total = db.query(ReportUser).join(User, User.phone == ReportUser.created_by_phone)
+    query_month_total = db.query(ReportUser).filter(
         ReportUser.when >= datetime.strptime(start_date, '%Y-%m-%d'),
         ReportUser.when <= datetime.strptime(end_date, '%Y-%m-%d')
-    ).count()
+    ).join(User, User.phone == ReportUser.created_by_phone)
+    if kd_propinsi and not kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        query_total = (query_total.filter(kd_propinsi_col == kd_propinsi))
+        query_month_total = (query_month_total.filter(kd_propinsi_col == kd_propinsi))
+    elif kd_propinsi and kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        query_total = (query_total.filter(kd_propinsi_col == kd_propinsi,
+                                          kd_kabupaten_col == kd_kabupaten))
+        query_month_total = (query_month_total.filter(kd_propinsi_col == kd_propinsi,
+                                                      kd_kabupaten_col == kd_kabupaten))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        query_total = (query_total.filter(kd_propinsi_col == kd_propinsi,
+                                          kd_kabupaten_col == kd_kabupaten,
+                                          kd_kecamatan_col == kd_kecamatan))
+        query_month_total = (query_month_total.filter(kd_propinsi_col == kd_propinsi,
+                                                      kd_kabupaten_col == kd_kabupaten,
+                                                      kd_kecamatan_col == kd_kecamatan))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        kd_kelurahan_col = literal_column("(string_to_array(users.location_id, '.'))[4]")
+        query_total = (query_total.filter(kd_propinsi_col == kd_propinsi,
+                                          kd_kabupaten_col == kd_kabupaten,
+                                          kd_kecamatan_col == kd_kecamatan,
+                                          kd_kelurahan_col == kd_kelurahan))
+        query_month_total = (query_month_total.filter(kd_propinsi_col == kd_propinsi,
+                                                      kd_kabupaten_col == kd_kabupaten,
+                                                      kd_kecamatan_col == kd_kecamatan,
+                                                      kd_kelurahan_col == kd_kelurahan))
+    print(str(query_total))
+    total = query_total.count()
+    print(total)
+    total_report_with_period = query_month_total.count()
 
     ## ============= Trend Report =====================
     query = db.query(cast(ReportUser.when, Date), func.count(ReportUser.id))
-    query = query.filter(
-        cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
-        cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d')
-    )
-    trend_report_results = query.group_by(cast(ReportUser.when, Date)).order_by(
-        cast(ReportUser.when, Date).desc()).all()
+    query = query.join(
+        User,
+        (User.phone == ReportUser.created_by_phone))
+    query = query.filter(cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
+                         cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d'))
+    if kd_propinsi and not kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi)
+                 .group_by(kd_propinsi_col, cast(ReportUser.when, Date)))
+    elif kd_propinsi and kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, cast(ReportUser.when, Date)))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten,
+                              kd_kecamatan_col == kd_kecamatan)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, cast(ReportUser.when, Date)))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        kd_kelurahan_col = literal_column("(string_to_array(users.location_id, '.'))[4]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten,
+                              kd_kecamatan_col == kd_kecamatan,
+                              kd_kelurahan_col == kd_kelurahan)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, kd_kelurahan_col,
+                           cast(ReportUser.when, Date)))
+    else:
+        query = query.group_by(cast(ReportUser.when, Date))
+    trend_report_results = query.order_by(ReportUser.when).all()
     json_trend_report_results = [
         {"date": date_val, "total": total} for date_val, total in trend_report_results
     ]
@@ -175,28 +255,48 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
     )
 
     ## =================== Kategori Laporan ===================
-
-    results_category = (
-        db.query(
-            ReportUser.category,
-            func.count(ReportUser.id).label("total")
-        )
-        .filter(
-            cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
-            cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d')
-        )
-        .group_by(ReportUser.category)
-        .all()
-    )
+    query = (db.query(ReportUser.category, func.count(ReportUser.id))
+             .join(User, User.phone == ReportUser.created_by_phone))
+    if start_date and end_date:
+        query = query.filter(cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
+                             cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d'))
+    if kd_propinsi and not kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi)
+                 .group_by(kd_propinsi_col, ReportUser.category))
+    elif kd_propinsi and kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, ReportUser.category))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten,
+                              kd_kecamatan_col == kd_kecamatan)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, ReportUser.category))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        kd_kelurahan_col = literal_column("(string_to_array(users.location_id, '.'))[4]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten,
+                              kd_kecamatan_col == kd_kecamatan,
+                              kd_kelurahan_col == kd_kelurahan)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, kd_kelurahan_col, ReportUser.category))
+    else:
+        query = (query.group_by(ReportUser.category))
+    results_category = query.all()
 
     json_category_results = [
         {"category": category, "total": total}
         for category, total in results_category
     ]
-    category_dict = {
-        row.category: row.total
-        for row in results_category
-    }
+    category_dict = {item["category"]: item["total"] for item in json_category_results}
     df_category = pd.DataFrame(json_category_results)
     md_trend_data = df_category.to_markdown(index=False)
     response_category = client.chat.completions.create(
@@ -210,50 +310,41 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
         temperature=0.5
     )
 
-    ## =========== Laporan Per Lokasi =========================
-
-    results_report_per_locations = (
-        db.query(
-            ReportUser.summary,
-            ReportUser.category,
-            ReportUser.when,
-            User.name,
-            User.location_id
-        )
-        .join(User, User.phone == ReportUser.created_by_phone)
-        .filter(
-            User.location_id.like(f'{location_id}%'),
-            cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
-            cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d')
-        )
-        .all()
-    )
-    json_report_per_locations = [
-        {
-            "summary": summary,
-            "category": category,
-            "when": when,
-            "name": name,
-            "location_id": location_id
-        }
-        for summary, category, when, name, location_id in results_report_per_locations
-    ]
-    df_report_per_location = pd.DataFrame(json_report_per_locations,
-                                          columns=['summary', 'category', 'when', 'name', 'location_id'])
-    md_report_per_location_data = df_report_per_location.to_markdown(index=False)
-    response_report_per_location = client.chat.completions.create(
-        model="gpt-4.1",
-        messages=[
-            {"role": "system",
-             "content": "Kamu adalah analis intelijen yang memberikan insight berdasarkan data yang diberikan. bahasa yang kamu gunakan adalah bahasa yang formal dan to the point"},
-            {"role": "user",
-             "content": f"Berikut adalah data laporan per lokasi dengan column location_id :\n{md_report_per_location_data}. Buatkan rangkuman untuk setiap lokasi dan bentuk dalam 1 paragraf text yang menjelaskan data tersebut"}
-        ],
-        temperature=0.5
-    )
-
     ## =============== Summary Laporan ===================
-    df_summary = df_report_per_location[['summary', 'category', 'when']]
+    query = (db.query(ReportUser.summary, ReportUser.category, ReportUser.when)
+             .join(User, User.phone == ReportUser.created_by_phone))
+    query = query.filter(cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
+                         cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d'))
+    if kd_propinsi and not kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi))
+    elif kd_propinsi and kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                                          kd_kabupaten_col == kd_kabupaten))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                                          kd_kabupaten_col == kd_kabupaten,
+                                          kd_kecamatan_col == kd_kecamatan))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        kd_kelurahan_col = literal_column("(string_to_array(users.location_id, '.'))[4]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                                          kd_kabupaten_col == kd_kabupaten,
+                                          kd_kecamatan_col == kd_kecamatan,
+                                          kd_kelurahan_col == kd_kelurahan))
+    report_per_location = query.all()
+    json_report_per_location = [
+        {"summary": summary, "category": category, "when": when}
+        for summary, category, when in report_per_location
+    ]
+    df_summary = pd.DataFrame(json_report_per_location)
     md_summary_data = df_summary.to_markdown(index=False)
     response_summary = client.chat.completions.create(
         model="gpt-4.1",
@@ -267,17 +358,47 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
     )
 
     ## =============  Top Kontributor =======================
-    query_contributor = db.query(User.name, func.count(ReportUser.id).label("total"))
+    query = (db.query(User.name, ReportUser.created_by_phone.label('cb'), func.count(ReportUser.id).label("total"))
+             .join(User, User.phone == ReportUser.created_by_phone))
+    query = query.filter(cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
+                         cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d'))
+    if kd_propinsi and not kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi)
+                 .group_by(kd_propinsi_col, User.name, ReportUser.created_by_phone))
+    elif kd_propinsi and kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, User.name, ReportUser.created_by_phone))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten,
+                              kd_kecamatan_col == kd_kecamatan)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, User.name, ReportUser.created_by_phone))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        kd_kelurahan_col = literal_column("(string_to_array(users.location_id, '.'))[4]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten,
+                              kd_kecamatan_col == kd_kecamatan,
+                              kd_kelurahan_col == kd_kelurahan)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, kd_kelurahan_col, User.name,
+                           ReportUser.created_by_phone))
+    else:
+        query = query.group_by(User.name, ReportUser.created_by_phone)
+    query = query.order_by(desc("total")).limit(5)
     results = (
-        query_contributor.join(
-            User,
-            (User.phone == ReportUser.created_by_phone)
-        ).group_by(User.name)
-        .order_by(desc("total"))
-        .limit(5)
+        query
         .all()
     )
-    contributors = [{"name": name, "total": total} for name, total in results]
+    contributors = [{"name": name, "total": total} for name, _, total in results]
     df_contributor = pd.DataFrame(contributors)
     md_contributor_data = df_contributor.to_markdown(index=False)
 
@@ -291,7 +412,6 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
     plt.xticks(rotation=30, ha='right')
     plt.tight_layout()
 
-    # Step 3: Save as binary image
     contributor_img_stream = BytesIO()
     plt.savefig(contributor_img_stream, format='png')
     contributor_img_stream.seek(0)
@@ -308,11 +428,23 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
     )
 
     ## ============= Trend Kontributor ====================
-    top_query = db.query(User.name, func.count(ReportUser.id).label("total")).filter(User.location_id.like(f'{location_id}%'))
-    top_contributors = [cb for cb, _ in top_query.join(
+    if start_date and end_date:
+        today = datetime.strptime(end_date, '%Y-%m-%d')
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        days = [(start + timedelta(days=i)).date() for i in range((today - start).days + 1)]
+    # Get top 5 contributors
+    top_query = db.query(User.name, ReportUser.created_by_phone, func.count(ReportUser.id).label("total"))
+    top_query = top_query.filter(cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
+                                 cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d'))
+    top_query = (top_query.join(
         User,
-        (User.phone == ReportUser.created_by_phone)
-    ).group_by(User.name).order_by(desc("total")).limit(5).all()]
+        (User.phone == ReportUser.created_by_phone))).order_by(desc("total"))
+
+    top_query = top_query.group_by(User.name,
+                                   ReportUser.created_by_phone)
+    top_contributors = [cb for cb, _, _ in top_query.limit(5).all()]
+    # Get daily totals for each contributor
+    trend_data = {d: {cb: 0 for cb in top_contributors} for d in days}
     query = (db.query(
         cast(ReportUser.when, Date).label("date"),
         User.name,
@@ -320,20 +452,19 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
     ).join(
         User,
         (User.phone == ReportUser.created_by_phone)
-    )
-    .filter(
-        User.location_id.like(f'{location_id}%'),
-        cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
-        cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d')
-    ))
-    query = query.filter(User.name.in_(top_contributors))
-    trend_contributor_results = query.group_by(cast(ReportUser.when, Date), User.name).all()
-    json_trend_contributor = [
-        {"date": date_val.strftime("%Y-%m-%d"), "name": name, "total": total}
-        for date_val, name, total in trend_contributor_results
-    ]
-    print(json_trend_contributor)
-    df_trend_contributor = pd.DataFrame(json_trend_contributor, columns=['date', 'name', 'total'])
+    ).order_by(ReportUser.when))
+    query = query.filter(cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
+                         cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d'))
+    query = query.group_by(cast(ReportUser.when, Date), User.name)
+    results = query.all()
+    for d, cb, total in results:
+        if cb in top_contributors and d in trend_data:
+            trend_data[d][cb] = total
+    trend_contributor_results = []
+    for d in days:
+        data = [{"name": cb, "total": trend_data[d][cb]} for cb in top_contributors]
+        trend_contributor_results.append({"date": d.isoformat(), "data": data})
+    df_trend_contributor = pd.DataFrame(trend_contributor_results)
     md_trend_contributor_data = df_trend_contributor.to_markdown(index=False)
 
     response_trend_contributor = client.chat.completions.create(
@@ -347,13 +478,16 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
         temperature=0.5
     )
 
-    df_trend_contributor["date"] = pd.to_datetime(df_trend_contributor["date"])
-    df_trend_contributor = df_trend_contributor.sort_values('date', ascending=True)
+    df_exploded = df_trend_contributor.explode("data")
+    df_exploded["name"] = df_exploded["data"].apply(lambda x: x["name"])
+    df_exploded["total"] = df_exploded["data"].apply(lambda x: x["total"])
+    df_exploded = df_exploded.drop(columns="data")
+
+    df_pivot = df_exploded.pivot(index="date", columns="name", values="total")
 
     fig, ax = plt.subplots(figsize=(8, 4))
-
-    for name, group in df_trend_contributor.groupby('name'):
-        plt.plot(group['date'], group['total'], marker='o', label=name)
+    for col in df_pivot.columns:
+        plt.plot(df_pivot.index, df_pivot[col], marker="o", label=col)
 
     ax.set_title("Tren Jumlah Laporan per Nama")
     ax.set_xlabel("Tanggal")
@@ -369,14 +503,50 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
 
     ## =========== Analisa Sentiment =============
 
-    sentiment_query = db.query(ReportUser.sentiment, func.count(ReportUser.id).label('total'))
-    sentiment_results = sentiment_query.group_by(ReportUser.sentiment).all()
+    query = db.query(ReportUser.sentiment, func.count(ReportUser.id))
+    query = query.filter(cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
+                         cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d'))
+    query = query.join(
+        User,
+        (User.phone == ReportUser.created_by_phone))
+    if kd_propinsi and not kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi)
+                 .group_by(kd_propinsi_col, ReportUser.sentiment))
+    elif kd_propinsi and kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, ReportUser.sentiment))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten,
+                              kd_kecamatan_col == kd_kecamatan)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, ReportUser.sentiment))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        kd_kelurahan_col = literal_column("(string_to_array(users.location_id, '.'))[4]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten,
+                              kd_kecamatan_col == kd_kecamatan,
+                              kd_kelurahan_col == kd_kelurahan)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, kd_kelurahan_col, ReportUser.sentiment))
+    else:
+        query = query.group_by(ReportUser.sentiment)
+    sentiment_results = query.all()
     json_sentiment = [
         {"sentiment": sentiment, "total": total}
         for sentiment, total in sentiment_results
     ]
-    sentiment_dict = {row.sentiment: row.total for row in sentiment_results}
-    df_sentiment = pd.DataFrame(json_sentiment, columns=['sentiment', 'total'])
+    sentiment_dict = {item["sentiment"]: item["total"] for item in json_sentiment}
+    print(sentiment_dict)
+    df_sentiment = pd.DataFrame(json_sentiment)
     md_sentiment_data = df_sentiment.to_markdown(index=False)
 
     response_sentiment = client.chat.completions.create(
@@ -406,13 +576,50 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
     sentiment_img_stream.seek(0)
 
     ## =========== Analisa Sentiment per Kategori =============
-    sentiment_category_query = db.query(ReportUser.category, ReportUser.sentiment, func.count(ReportUser.id))
-    sentiment_category_results = sentiment_category_query.group_by(ReportUser.sentiment, ReportUser.category).all()
+    query = db.query(ReportUser.category, ReportUser.sentiment, func.count(ReportUser.id))
+    query = query.join(
+        User,
+        (User.phone == ReportUser.created_by_phone))
+    query = query.filter(cast(ReportUser.when, Date) >= datetime.strptime(start_date, '%Y-%m-%d'),
+                         cast(ReportUser.when, Date) <= datetime.strptime(end_date, '%Y-%m-%d'))
+    if kd_propinsi and not kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi)
+                 .group_by(kd_propinsi_col, ReportUser.sentiment, ReportUser.category))
+    elif kd_propinsi and kd_kabupaten and not kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, ReportUser.sentiment, ReportUser.category))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and not kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten,
+                              kd_kecamatan_col == kd_kecamatan)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, ReportUser.sentiment,
+                           ReportUser.category))
+    elif kd_propinsi and kd_kabupaten and kd_kecamatan and kd_kelurahan:
+        kd_propinsi_col = literal_column("(string_to_array(users.location_id, '.'))[1]")
+        kd_kabupaten_col = literal_column("(string_to_array(users.location_id, '.'))[2]")
+        kd_kecamatan_col = literal_column("(string_to_array(users.location_id, '.'))[3]")
+        kd_kelurahan_col = literal_column("(string_to_array(users.location_id, '.'))[4]")
+        query = (query.filter(kd_propinsi_col == kd_propinsi,
+                              kd_kabupaten_col == kd_kabupaten,
+                              kd_kecamatan_col == kd_kecamatan,
+                              kd_kelurahan_col == kd_kelurahan)
+                 .group_by(kd_propinsi_col, kd_kabupaten_col, kd_kecamatan_col, kd_kelurahan_col, ReportUser.sentiment,
+                           ReportUser.category))
+    else:
+        query = query.group_by(ReportUser.sentiment, ReportUser.category)
+    sentiment_category_results = query.all()
     json_sentiment_category = [
         {"category": category, "sentiment": sentiment, "total": total}
         for category, sentiment, total in sentiment_category_results
     ]
-    df_sentiment_category = pd.DataFrame(json_sentiment_category, columns=['category', 'sentiment', 'total'])
+    df_sentiment_category = pd.DataFrame(json_sentiment_category)
     md_sentiment_category_data = df_sentiment_category.to_markdown(index=False)
 
     response_sentiment_category = client.chat.completions.create(
@@ -461,7 +668,6 @@ def get_report_data(db: Session, client, location_id: str, start_date: str, end_
         'total_laporan_informasi': category_dict['Laporan Informasi'],
         'total_laporan_progress': category_dict['Laporan Progress'],
         'deskripsi_kategori_laporan': response_category.choices[0].message.content,
-        'rangkuman_laporan_perlokasi': response_report_per_location.choices[0].message.content,
         'rangkuman_laporan': response_summary.choices[0].message.content,
         'chart_top_kontributor': InlineImage(doc, contributor_img_stream, width=Mm(160)),
         'deskripsi_top_kontributor': response_contributor.choices[0].message.content,

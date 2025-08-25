@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, Text, Date, String, TIMESTAMP
+from sqlalchemy import Column, Integer, Text, Date, String, TIMESTAMP, Boolean
 from database import Base
+
 
 class ReportUser(Base):
     __tablename__ = "report_user"
@@ -17,3 +18,8 @@ class ReportUser(Base):
     created_by = Column(String(100))
     created_by_phone = Column(String(20))
     sentiment = Column(String)
+    progress = Column(Integer)
+    status = Column(Text)
+    parent_id = Column(Text)
+    chat_id = Column(Text)
+    is_verified = Column(Boolean)

@@ -472,7 +472,9 @@ def get_desc_data(db: Session, category: str = None,
         ReportUser.what,
         ReportUser.who,
         ReportUser.where,
-        ReportUser.created_at
+        ReportUser.created_at,
+        ReportUser.chat_id,
+        ReportUser.parent_id
     )
     if category:
         query = query.filter(ReportUser.category == category)
@@ -510,7 +512,9 @@ def get_desc_data(db: Session, category: str = None,
             "what": r[0],
             "who": r[1],
             "where": r[2],
-            "created_at": r[3].isoformat() if r[3] else None
+            "created_at": r[3].isoformat() if r[3] else None,
+            "chat_id": r[4],
+            "parent_id": r[5]
         }
         for r in results
     ]
